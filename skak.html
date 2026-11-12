@@ -1,0 +1,488 @@
+<title>Skak med angrebskort</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@600;700&display=swap">
+<style>
+/* Layout: board as the hero on the left, a quiet control panel on the right; stacks on phones. */
+:root{
+  --bg:#eceff3; --panel:#ffffff; --fg:#18202c; --muted:#5b6577; --line:#d3d9e2;
+  --sq-light:#e4e8ee; --sq-dark:#8797ad; --coord-light:#6c7c93; --coord-dark:#eef1f5;
+  --wa:#0e9f9a; --ba:#8a4fe8;
+  --hang:#e0244a; --under:#f07a12; --guard:#e5b50b;
+  --accent:#2457b8; --sel:#f2d14b; --last:#c9d86a;
+  --piece-w:#fbfbf8; --piece-w-stroke:#1d232d; --piece-b:#1d232d; --piece-b-stroke:#d8dde5;
+  --f-display:"Familjen Grotesk","Segoe UI",system-ui,sans-serif;
+  --f-body:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11151c; --panel:#191f29; --fg:#e5e9f0; --muted:#98a2b3; --line:#2a3342;
+  --sq-light:#c9d0da; --sq-dark:#66768d; --coord-light:#55657c; --coord-dark:#e2e7ee;
+  --wa:#19b5af; --ba:#9b66f2; --hang:#ff3d62; --under:#ff8c2a; --guard:#f2c522;
+  --accent:#7aa4ff; --sel:#f2d14b; --last:#b9c95c;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#11151c; --panel:#191f29; --fg:#e5e9f0; --muted:#98a2b3; --line:#2a3342;
+  --sq-light:#c9d0da; --sq-dark:#66768d; --coord-light:#55657c; --coord-dark:#e2e7ee;
+  --wa:#19b5af; --ba:#9b66f2; --hang:#ff3d62; --under:#ff8c2a; --guard:#f2c522;
+  --accent:#7aa4ff; --sel:#f2d14b; --last:#b9c95c;
+  color-scheme:dark;
+}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 40px}
+.wrap{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:minmax(0,600px) minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr)}}
+h1{font-family:var(--f-display);font-weight:700;font-size:clamp(26px,4vw,36px);line-height:1.05;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-family:var(--f-display);font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+.sub{color:var(--muted);margin:6px 0 16px;max-width:60ch}
+
+/* Board */
+.board-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+.board{display:grid;grid-template-columns:repeat(8,1fr);width:100%;max-width:600px;aspect-ratio:1;border-radius:6px;overflow:hidden;
+  box-shadow:0 1px 0 var(--line),0 12px 32px -18px rgba(10,20,40,.55);user-select:none;touch-action:manipulation}
+.sq{position:relative;cursor:pointer;container-type:size}
+.sq.l{background:var(--sq-light)} .sq.d{background:var(--sq-dark)}
+.sq.last.l{background:color-mix(in srgb,var(--last) 55%,var(--sq-light))}
+.sq.last.d{background:color-mix(in srgb,var(--last) 55%,var(--sq-dark))}
+.sq.sel{background:var(--sel)!important}
+.tint{position:absolute;inset:0;pointer-events:none;transition:background .15s}
+.ring{position:absolute;inset:0;pointer-events:none;z-index:1}
+.ring.hang{box-shadow:inset 0 0 0 4px var(--hang);background:radial-gradient(circle,transparent 55%,color-mix(in srgb,var(--hang) 35%,transparent) 100%)}
+.ring.under{box-shadow:inset 0 0 0 4px var(--under)}
+.ring.guard{box-shadow:inset 0 0 0 3px var(--guard)}
+.ring.hang{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:inset 0 0 0 6px var(--hang)}}
+.sq.check .tint{background:radial-gradient(circle,color-mix(in srgb,var(--hang) 80%,transparent) 15%,transparent 72%)!important}
+.src-w,.src-b{position:absolute;inset:3px;border-radius:4px;pointer-events:none;z-index:1}
+.src-w{outline:2px dashed var(--wa);outline-offset:-2px}
+.src-b{outline:2px dashed var(--ba);outline-offset:-2px}
+.hov{position:absolute;inset:0;z-index:1;pointer-events:none;box-shadow:inset 0 0 0 2px var(--fg);opacity:.5}
+.pc{position:absolute;inset:0;display:grid;place-items:center;z-index:2;font-size:78cqh;line-height:1;
+  font-family:"Segoe UI Symbol","DejaVu Sans","Noto Sans Symbols 2",serif;pointer-events:none}
+.pc.w{color:var(--piece-w);-webkit-text-stroke:1.4px var(--piece-w-stroke);paint-order:stroke fill}
+.pc.b{color:var(--piece-b);-webkit-text-stroke:1px var(--piece-b-stroke);paint-order:stroke fill}
+.dot{position:absolute;inset:0;display:grid;place-items:center;z-index:3;pointer-events:none}
+.dot::after{content:"";width:28%;height:28%;border-radius:50%;background:rgba(20,30,45,.35)}
+.dot.cap::after{width:88%;height:88%;background:transparent;box-shadow:inset 0 0 0 5px rgba(20,30,45,.35)}
+.cnt{position:absolute;z-index:4;font-family:var(--f-mono);font-weight:700;font-size:max(10px,17cqh);line-height:1;
+  padding:2px 4px;border-radius:4px;color:#fff;pointer-events:none;font-variant-numeric:tabular-nums}
+.cnt.w{left:3px;bottom:3px;background:var(--wa)}
+.cnt.b{right:3px;top:3px;background:var(--ba)}
+.co{position:absolute;font-family:var(--f-mono);font-size:max(9px,14cqh);font-weight:600;pointer-events:none;z-index:2;opacity:.9}
+.co.f{right:3px;bottom:1px} .co.r{left:3px;top:1px}
+.sq.l .co{color:var(--coord-light)} .sq.d .co{color:var(--coord-dark)}
+.cnt.w ~ .co.f{display:none}
+.info{min-height:3em;font-size:14px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.info b{color:var(--fg)}
+.tw{color:var(--wa);font-weight:700} .tb{color:var(--ba);font-weight:700}
+
+/* Panel */
+.panel{display:flex;flex-direction:column;gap:22px;min-width:0}
+.status{display:flex;align-items:center;gap:12px;font-family:var(--f-display);font-size:22px;font-weight:700}
+.disc{width:22px;height:22px;border-radius:50%;border:2px solid var(--fg);flex:none}
+.disc.w{background:#fbfbf8} .disc.b{background:#1d232d}
+.status.alert{color:var(--hang)}
+.promo{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.promo button{font-size:28px;width:48px;height:48px;padding:0;font-family:"Segoe UI Symbol","DejaVu Sans",serif}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{font-family:var(--f-body);font-size:14px;font-weight:700;color:var(--fg);background:var(--panel);border:1px solid var(--line);
+  border-radius:7px;padding:8px 14px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+button:disabled{opacity:.45;cursor:default}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+.seg button{border:0;border-radius:0;padding:8px 14px;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.chk{display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer}
+.chk input{width:17px;height:17px;accent-color:var(--accent)}
+.legend{display:grid;gap:8px;font-size:14px}
+.lg{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:center}
+.sw{width:30px;height:22px;border-radius:4px}
+.ramp{display:flex;gap:2px}
+.ramp i{flex:1;height:22px;border-radius:3px}
+.threats{display:grid;gap:6px;font-size:14px}
+.threats .row{display:flex;align-items:center;gap:8px}
+.chip{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:999px;color:#fff;flex:none}
+.chip.hang{background:var(--hang)} .chip.under{background:var(--under)} .chip.guard{background:var(--guard);color:#2a2200}
+.empty{color:var(--muted)}
+.moves{font-family:var(--f-mono);font-size:13px;display:grid;grid-template-columns:2.6em 1fr 1fr;gap:2px 8px;max-height:220px;overflow:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-variant-numeric:tabular-nums}
+.moves .n{color:var(--muted)}
+.note{font-size:13px;color:var(--muted);border-left:3px solid var(--accent);padding-left:10px}
+@media (prefers-reduced-motion:reduce){.ring.hang{animation:none}.tint{transition:none}}
+</style>
+
+<div class="wrap">
+  <div class="board-col">
+    <div>
+      <h1>Skak med angrebskort</h1>
+      <p class="sub">Se hvilke felter hver side angriber, hvor mange gange, og hvilke brikker der hænger. Hold musen over et felt (eller tryk på det) for at se angriberne.</p>
+    </div>
+    <div class="board" id="board" role="grid" aria-label="Skakbræt"></div>
+    <div class="info" id="info" aria-live="polite">Hold musen over et felt for at se, hvem der angriber det.</div>
+  </div>
+
+  <aside class="panel">
+    <section>
+      <div class="status" id="status"></div>
+      <div class="promo" id="promo" hidden></div>
+    </section>
+    <section class="btns">
+      <button class="primary" id="newBtn">Nyt parti</button>
+      <button id="undoBtn">Fortryd træk</button>
+      <button id="flipBtn">Vend brættet</button>
+    </section>
+    <section>
+      <h2>Vis angrebne felter</h2>
+      <div class="seg" role="group" aria-label="Vis angrebne felter" id="modeSeg">
+        <button data-mode="none">Ingen</button>
+        <button data-mode="w">Hvid</button>
+        <button data-mode="b">Sort</button>
+        <button data-mode="both">Begge</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="optCount" checked> Vis antal angribere på hvert felt</label>
+      <label class="chk"><input type="checkbox" id="optThreat" checked> Markér truede brikker</label>
+    </section>
+    <section>
+      <h2>Farver</h2>
+      <div class="legend">
+        <div class="lg"><div class="ramp" id="rampW"></div><span><span class="tw">Hvid</span> angriber feltet (1×, 2×, 3×+)</span></div>
+        <div class="lg"><div class="ramp" id="rampB"></div><span><span class="tb">Sort</span> angriber feltet (1×, 2×, 3×+)</span></div>
+        <div class="lg"><div class="sw" style="background:linear-gradient(135deg,color-mix(in srgb,var(--wa) 55%,transparent) 50%,color-mix(in srgb,var(--ba) 55%,transparent) 50%)"></div><span>Begge sider angriber feltet</span></div>
+        <div class="lg"><div class="sw" style="box-shadow:inset 0 0 0 4px var(--hang)"></div><span><b>Hænger</b>: angrebet og slet ikke forsvaret</span></div>
+        <div class="lg"><div class="sw" style="box-shadow:inset 0 0 0 4px var(--under)"></div><span><b>Underforsvaret</b>: flere angribere end forsvarere, eller angrebet af en billigere brik</span></div>
+        <div class="lg"><div class="sw" style="box-shadow:inset 0 0 0 3px var(--guard)"></div><span><b>Angrebet, men forsvaret</b></span></div>
+      </div>
+    </section>
+    <section>
+      <h2>Truede brikker</h2>
+      <div class="threats" id="threats"></div>
+    </section>
+    <section>
+      <h2>Træk</h2>
+      <p class="note" id="exampleNote">Eksempelstilling: 1.e4 e5 2.Sf3 Sc6 3.Lc4 Sf6 4.Sg5. Bonden på f7 er angrebet to gange og kun forsvaret én gang. Tryk «Nyt parti» for at starte forfra.</p>
+      <div class="moves" id="moves"></div>
+    </section>
+  </aside>
+</div>
+
+<script>
+(() => {
+const GLYPH={k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+const VS='︎';
+const DK={k:'K',q:'D',r:'T',b:'L',n:'S',p:''};
+const NAME={k:'Konge',q:'Dronning',r:'Tårn',b:'Løber',n:'Springer',p:'Bonde'};
+const VAL={p:1,n:3,b:3,r:5,q:9,k:100};
+const SIDE={w:'Hvid',b:'Sort'};
+const N_OFF=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+const K_OFF=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+const B_DIR=[[-1,-1],[-1,1],[1,-1],[1,1]], R_DIR=[[-1,0],[1,0],[0,-1],[0,1]];
+
+const colorOf=p=>p?(p===p.toUpperCase()?'w':'b'):null;
+const typeOf=p=>p.toLowerCase();
+const opp=c=>c==='w'?'b':'w';
+const sqName=i=>'abcdefgh'[i&7]+(8-(i>>3));
+const sqIndex=s=>(8-+s[1])*8+'abcdefgh'.indexOf(s[0]);
+
+function initial(){
+  const rows='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR'.split('/');
+  const board=[];
+  for(const row of rows) for(const ch of row){ if(/\d/.test(ch)) for(let k=0;k<+ch;k++) board.push(''); else board.push(ch); }
+  return {board,turn:'w',castle:{K:true,Q:true,k:true,q:true},ep:-1};
+}
+
+function attackedFrom(board,i){
+  const p=board[i], t=typeOf(p), c=colorOf(p), r=i>>3, f=i&7, out=[];
+  const add=(rr,ff)=>{ if(rr>=0&&rr<8&&ff>=0&&ff<8) out.push(rr*8+ff); };
+  if(t==='p'){ const d=c==='w'?-1:1; add(r+d,f-1); add(r+d,f+1); }
+  else if(t==='n') N_OFF.forEach(([a,b])=>add(r+a,f+b));
+  else if(t==='k') K_OFF.forEach(([a,b])=>add(r+a,f+b));
+  else{
+    const dirs=t==='b'?B_DIR:t==='r'?R_DIR:B_DIR.concat(R_DIR);
+    for(const [a,b] of dirs){
+      let rr=r+a, ff=f+b;
+      while(rr>=0&&rr<8&&ff>=0&&ff<8){ const j=rr*8+ff; out.push(j); if(board[j]) break; rr+=a; ff+=b; }
+    }
+  }
+  return out;
+}
+
+function attackMap(board){
+  const m={w:Array.from({length:64},()=>[]), b:Array.from({length:64},()=>[])};
+  for(let i=0;i<64;i++) if(board[i]) for(const j of attackedFrom(board,i)) m[colorOf(board[i])][j].push(i);
+  return m;
+}
+function kingSq(board,c){ const k=c==='w'?'K':'k'; return board.indexOf(k); }
+function inCheck(board,c){ const k=kingSq(board,c); return attackMap(board)[opp(c)][k].length>0; }
+
+function pseudo(st){
+  const {board,turn}=st, moves=[];
+  const am=attackMap(board);
+  for(let i=0;i<64;i++){
+    const p=board[i]; if(colorOf(p)!==turn) continue;
+    const t=typeOf(p), r=i>>3, f=i&7;
+    if(t==='p'){
+      const d=turn==='w'?-1:1, start=turn==='w'?6:1, last=turn==='w'?0:7;
+      const push=(to,extra={})=>{
+        if((to>>3)===last) for(const q of 'qrbn') moves.push({from:i,to,promo:q,...extra});
+        else moves.push({from:i,to,...extra});
+      };
+      const one=(r+d)*8+f;
+      if(r+d>=0&&r+d<8&&!board[one]){
+        push(one);
+        if(r===start&&!board[one+d*8]) moves.push({from:i,to:one+d*8,double:true});
+      }
+      for(const df of [-1,1]){
+        const ff=f+df; if(ff<0||ff>7||r+d<0||r+d>7) continue;
+        const j=(r+d)*8+ff;
+        if(board[j]&&colorOf(board[j])!==turn) push(j);
+        else if(j===st.ep) moves.push({from:i,to:j,ep:true});
+      }
+    } else {
+      for(const j of attackedFrom(board,i)) if(!board[j]||colorOf(board[j])!==turn) moves.push({from:i,to:j});
+      if(t==='k'){
+        const o=opp(turn), A=am[o];
+        const ok=sqs=>sqs.every(s=>A[s].length===0);
+        if(turn==='w'&&i===60){
+          if(st.castle.K&&board[63]==='R'&&!board[61]&&!board[62]&&ok([60,61,62])) moves.push({from:60,to:62,castle:'K'});
+          if(st.castle.Q&&board[56]==='R'&&!board[59]&&!board[58]&&!board[57]&&ok([60,59,58])) moves.push({from:60,to:58,castle:'Q'});
+        }
+        if(turn==='b'&&i===4){
+          if(st.castle.k&&board[7]==='r'&&!board[5]&&!board[6]&&ok([4,5,6])) moves.push({from:4,to:6,castle:'k'});
+          if(st.castle.q&&board[0]==='r'&&!board[3]&&!board[2]&&!board[1]&&ok([4,3,2])) moves.push({from:4,to:2,castle:'q'});
+        }
+      }
+    }
+  }
+  return moves;
+}
+
+function apply(st,m){
+  const board=st.board.slice(), p=board[m.from];
+  board[m.to]=m.promo?(st.turn==='w'?m.promo.toUpperCase():m.promo):p;
+  board[m.from]='';
+  if(m.ep) board[(m.from>>3)*8+(m.to&7)]='';
+  if(m.castle==='K'){board[61]='R';board[63]='';}
+  if(m.castle==='Q'){board[59]='R';board[56]='';}
+  if(m.castle==='k'){board[5]='r';board[7]='';}
+  if(m.castle==='q'){board[3]='r';board[0]='';}
+  const castle={...st.castle};
+  if(p==='K'){castle.K=castle.Q=false;} if(p==='k'){castle.k=castle.q=false;}
+  for(const s of [m.from,m.to]){ if(s===63)castle.K=false; if(s===56)castle.Q=false; if(s===7)castle.k=false; if(s===0)castle.q=false; }
+  return {board,turn:opp(st.turn),castle,ep:m.double?(m.from+m.to)/2:-1};
+}
+
+function legal(st){ return pseudo(st).filter(m=>!inCheck(apply(st,m).board,st.turn)); }
+
+function san(st,m,moves){
+  if(m.castle) return (m.castle.toLowerCase()==='k'?'O-O':'O-O-O')+suffix(st,m);
+  const p=st.board[m.from], t=typeOf(p);
+  const cap=!!st.board[m.to]||m.ep;
+  let s='';
+  if(t==='p'){ if(cap) s+=sqName(m.from)[0]; }
+  else{
+    s+=DK[t];
+    const others=moves.filter(o=>o.to===m.to&&o.from!==m.from&&st.board[o.from]===p);
+    if(others.length){
+      const sameFile=others.some(o=>(o.from&7)===(m.from&7)), sameRank=others.some(o=>(o.from>>3)===(m.from>>3));
+      if(!sameFile) s+=sqName(m.from)[0]; else if(!sameRank) s+=sqName(m.from)[1]; else s+=sqName(m.from);
+    }
+  }
+  if(cap) s+='x';
+  s+=sqName(m.to);
+  if(m.promo) s+='='+DK[m.promo];
+  return s+suffix(st,m);
+}
+function suffix(st,m){
+  const ns=apply(st,m);
+  if(!inCheck(ns.board,ns.turn)) return '';
+  return legal(ns).length?'+':'#';
+}
+
+/* ---- game state ---- */
+let st, hist, legalNow, selected=null, hoverSq=null, flipped=false, pendingPromo=null, lastMove=null, example=false;
+let mode='both', showCount=true, showThreat=true;
+
+function newGame(withExample){
+  st=initial(); hist=[]; lastMove=null; selected=null; pendingPromo=null; example=!!withExample;
+  if(withExample){
+    for(const mv of ['e2e4','e7e5','g1f3','b8c6','f1c4','g8f6','f3g5']){
+      const from=sqIndex(mv.slice(0,2)), to=sqIndex(mv.slice(2,4));
+      const m=legal(st).find(x=>x.from===from&&x.to===to);
+      doMove(m,true);
+    }
+  }
+  legalNow=legal(st);
+  render();
+}
+function doMove(m,silent){
+  const moves=legal(st);
+  hist.push({st,san:san(st,m,moves),last:lastMove});
+  st=apply(st,m); lastMove=m; selected=null; pendingPromo=null;
+  if(!silent){ example=false; legalNow=legal(st); render(); }
+}
+function undo(){
+  if(!hist.length) return;
+  const h=hist.pop(); st=h.st; lastMove=h.last; selected=null; pendingPromo=null; example=false;
+  legalNow=legal(st); render();
+}
+
+function classify(board,am){
+  const res={};
+  for(let i=0;i<64;i++){
+    const p=board[i]; if(!p) continue;
+    const c=colorOf(p), t=typeOf(p); if(t==='k') continue;
+    const att=am[opp(c)][i], def=am[c][i];
+    if(!att.length) continue;
+    const minAtt=Math.min(...att.map(s=>VAL[typeOf(board[s])]));
+    let k;
+    if(!def.length) k='hang';
+    else if(minAtt<VAL[t]||att.length>def.length) k='under';
+    else k='guard';
+    res[i]={k,att:att.length,def:def.length,c,t};
+  }
+  return res;
+}
+
+const boardEl=document.getElementById('board');
+const mix=(v,n)=>`color-mix(in srgb,var(${v}) ${n===1?32:n===2?55:78}%,transparent)`;
+
+function render(){
+  const board=st.board, am=attackMap(board);
+  const threats=classify(board,am);
+  const over=!legalNow.length;
+  const checkSq=inCheck(board,st.turn)?kingSq(board,st.turn):-1;
+  const targets=selected!==null?legalNow.filter(m=>m.from===selected):[];
+  const hovAtt=hoverSq!==null?{w:am.w[hoverSq],b:am.b[hoverSq]}:null;
+
+  let html='';
+  for(let v=0;v<64;v++){
+    const i=flipped?63-v:v, r=i>>3, f=i&7, light=(r+f)%2===0;
+    const p=board[i];
+    const wn=am.w[i].length, bn=am.b[i].length;
+    let tint='';
+    const sw=mode==='w'||mode==='both', sb=mode==='b'||mode==='both';
+    const W=sw&&wn?mix('--wa',Math.min(wn,3)):'', B=sb&&bn?mix('--ba',Math.min(bn,3)):'';
+    if(W&&B) tint=`linear-gradient(135deg,${W} 50%,${B} 50%)`; else tint=W||B||'';
+    const cls=['sq',light?'l':'d'];
+    if(lastMove&&(i===lastMove.from||i===lastMove.to)) cls.push('last');
+    if(i===selected) cls.push('sel');
+    if(i===checkSq) cls.push('check');
+    html+=`<div class="${cls.join(' ')}" data-sq="${i}" role="gridcell" aria-label="${sqName(i)}${p?' '+SIDE[colorOf(p)].toLowerCase()+' '+NAME[typeOf(p)].toLowerCase():''}">`;
+    html+=`<div class="tint" style="${tint?'background:'+tint:''}"></div>`;
+    if(showThreat&&threats[i]) html+=`<div class="ring ${threats[i].k}"></div>`;
+    if(hovAtt){ if(hovAtt.w.includes(i)) html+='<div class="src-w"></div>'; if(hovAtt.b.includes(i)) html+='<div class="src-b"></div>'; }
+    if(i===hoverSq) html+='<div class="hov"></div>';
+    if(p) html+=`<span class="pc ${colorOf(p)}">${GLYPH[typeOf(p)]}${VS}</span>`;
+    const tg=targets.find(m=>m.to===i);
+    if(tg) html+=`<span class="dot${p||tg.ep?' cap':''}"></span>`;
+    if(showCount&&sw&&wn) html+=`<span class="cnt w">${wn}</span>`;
+    if(showCount&&sb&&bn) html+=`<span class="cnt b">${bn}</span>`;
+    const bottom=flipped?r===0:r===7, left=flipped?f===7:f===0;
+    if(bottom) html+=`<span class="co f">${'abcdefgh'[f]}</span>`;
+    if(left) html+=`<span class="co r">${8-r}</span>`;
+    html+='</div>';
+  }
+  boardEl.innerHTML=html;
+
+  // status
+  const sEl=document.getElementById('status');
+  const inChk=checkSq>=0;
+  let txt;
+  if(over&&inChk) txt=`Skakmat. ${SIDE[opp(st.turn)]} vinder`;
+  else if(over) txt='Pat. Remis';
+  else txt=`${SIDE[st.turn]} trækker${inChk?' · Skak!':''}`;
+  sEl.className='status'+(inChk?' alert':'');
+  sEl.innerHTML=`<span class="disc ${st.turn}"></span><span>${txt}</span>`;
+
+  // promotion picker
+  const pr=document.getElementById('promo');
+  if(pendingPromo){
+    pr.hidden=false;
+    pr.innerHTML='<span>Forvandl til:</span>'+['q','r','b','n'].map(q=>`<button data-promo="${q}" aria-label="${NAME[q]}" title="${NAME[q]}">${GLYPH[q]}${VS}</button>`).join('');
+  } else pr.hidden=true;
+
+  // mode buttons
+  document.querySelectorAll('#modeSeg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode===mode));
+  document.getElementById('undoBtn').disabled=!hist.length;
+
+  // threats list
+  const tEl=document.getElementById('threats');
+  const order={hang:0,under:1,guard:2}, label={hang:'Hænger',under:'Underforsvaret',guard:'Forsvaret'};
+  const list=Object.entries(threats).sort((a,b)=>order[a[1].k]-order[b[1].k]||VAL[b[1].t]-VAL[a[1].t]);
+  tEl.innerHTML=list.length?list.map(([i,x])=>`<div class="row"><span class="chip ${x.k}">${label[x.k]}</span><span><span class="${x.c==='w'?'tw':'tb'}">${SIDE[x.c]}</span> ${NAME[x.t].toLowerCase()} på <b>${sqName(+i)}</b> · ${x.att} angriber${x.att>1?'e':''}, ${x.def} forsvarer${x.def===1?'':'e'}</span></div>`).join('')
+    :'<span class="empty">Ingen brikker er angrebet lige nu.</span>';
+
+  // moves
+  const mv=document.getElementById('moves');
+  let mh='';
+  for(let k=0;k<hist.length;k+=2){
+    mh+=`<span class="n">${k/2+1}.</span><span>${hist[k].san}</span><span>${hist[k+1]?hist[k+1].san:''}</span>`;
+  }
+  mv.innerHTML=mh||'<span class="empty" style="grid-column:1/-1">Ingen træk endnu.</span>';
+  mv.scrollTop=mv.scrollHeight;
+  document.getElementById('exampleNote').hidden=!example;
+
+  renderInfo(am);
+}
+
+function pieceLabel(board,s){ const p=board[s]; return (DK[typeOf(p)]||'')+sqName(s); }
+function renderInfo(am){
+  const el=document.getElementById('info');
+  if(hoverSq===null){ el.innerHTML='Hold musen over et felt for at se, hvem der angriber det.'; return; }
+  am=am||attackMap(st.board);
+  const w=am.w[hoverSq], b=am.b[hoverSq], p=st.board[hoverSq];
+  const head=`<b>${sqName(hoverSq)}</b>${p?` (${SIDE[colorOf(p)].toLowerCase()} ${NAME[typeOf(p)].toLowerCase()})`:''}`;
+  const part=(arr,c)=>arr.length?`<span class="${c==='w'?'tw':'tb'}">${SIDE[c]} ${arr.length}×</span> (${arr.map(s=>pieceLabel(st.board,s)).join(', ')})`:`<span class="${c==='w'?'tw':'tb'}">${SIDE[c]} 0×</span>`;
+  el.innerHTML=`${head}: ${part(w,'w')} · ${part(b,'b')}`;
+}
+
+/* ---- input ---- */
+boardEl.addEventListener('click',e=>{
+  const cell=e.target.closest('.sq'); if(!cell) return;
+  const i=+cell.dataset.sq;
+  hoverSq=i;
+  if(pendingPromo){ pendingPromo=null; selected=null; render(); return; }
+  if(!legalNow.length){ render(); return; }
+  if(selected!==null){
+    const ms=legalNow.filter(m=>m.from===selected&&m.to===i);
+    if(ms.length){
+      if(ms[0].promo){ pendingPromo={from:selected,to:i}; render(); return; }
+      doMove(ms[0]); return;
+    }
+  }
+  selected=(colorOf(st.board[i])===st.turn&&i!==selected)?i:null;
+  render();
+});
+boardEl.addEventListener('mouseover',e=>{
+  const cell=e.target.closest('.sq'); if(!cell) return;
+  const i=+cell.dataset.sq; if(i===hoverSq) return;
+  hoverSq=i; render();
+});
+boardEl.addEventListener('mouseleave',()=>{ hoverSq=null; render(); });
+document.getElementById('promo').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-promo]'); if(!b||!pendingPromo) return;
+  const m=legalNow.find(x=>x.from===pendingPromo.from&&x.to===pendingPromo.to&&x.promo===b.dataset.promo);
+  if(m) doMove(m);
+});
+document.getElementById('modeSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-mode]'); if(!b) return; mode=b.dataset.mode; render();
+});
+document.getElementById('optCount').addEventListener('change',e=>{showCount=e.target.checked;render();});
+document.getElementById('optThreat').addEventListener('change',e=>{showThreat=e.target.checked;render();});
+document.getElementById('newBtn').addEventListener('click',()=>newGame(false));
+document.getElementById('undoBtn').addEventListener('click',undo);
+document.getElementById('flipBtn').addEventListener('click',()=>{flipped=!flipped;render();});
+
+// legend ramps
+for(const [id,v] of [['rampW','--wa'],['rampB','--ba']])
+  document.getElementById(id).innerHTML=[1,2,3].map(n=>`<i style="background:${mix(v,n)}"></i>`).join('');
+document.querySelectorAll('.lg').forEach(r=>r.style.gridTemplateColumns='72px 1fr');
+
+newGame(true);
+})();
+</script>
